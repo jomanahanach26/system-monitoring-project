@@ -1,6 +1,7 @@
-"""Monitoreringssystemets logik: laddar larmen och kontrollerar vilka larm som slår till."""
+"""Monitoreringssystemets logik: laddar larmen, kontrollerar vilka larm som slår till och kör monitorsessioner."""
 
 import json
+from datetime import datetime
 
 from alarm import Alarm
 
@@ -40,6 +41,21 @@ def find_triggered_alarms(alarms: list, usage: dict):
     return triggered_alarms
 
 
+def format_usage_report(iteration: int, usage: dict, triggered_alarms: list):
+    """Returnerar texten som visas för användaren under ett varv i monitorsessionen. (Pure function)"""
+    report = f"Varv {iteration}: CPU {usage['cpu']}% | RAM {usage['ram']}% | Disk {usage['disk']}%"
+    if len(triggered_alarms) == 0:
+        return report + "\n  Inga larm har slagit till."
+    for alarm in triggered_alarms:
+        report += f"\n  LARM! {alarm} överskrids (nu {usage[alarm.category]}%)"
+    return report
+
+
+def seconds_since(start_time: datetime):
+    """Returnerar hur många sekunder som har gått sedan start_time."""
+    return (datetime.now() - start_time).total_seconds()
+
+
 class Monitor:
     """Håller reda på monitoreringssystemets larm."""
 
@@ -63,3 +79,24 @@ class Monitor:
         except (json.JSONDecodeError, KeyError, TypeError, ValueError):
             # larmen som redan var laddade behålls när filen inte går att läsa
             return f"Fel: Larmfilen {self.alarm_file_path} kunde inte läsas, larmen laddades inte."
+
+    def run_session(self, session_length, system_usage):
+        """Kör en monitorsession tills den valda längden är nådd eller användaren trycker Ctrl+C.
+
+        session_length är ett SessionLength-objekt och system_usage ett SystemUsage-objekt.
+        Returnerar hur många varv sessionen hann köra.
+        """
+        print(f"Monitorsessionen startar och pågår i {session_length}. Tryck Ctrl+C för att avbryta.")
+        start_time = datetime.now()
+        iterations_done = 0
+        try:
+            while not session_length.is_finished(iterations_done, seconds_since(start_time)):
+                usage = system_usage.get_all_usage()
+                iterations_done += 1
+                triggered_alarms = find_triggered_alarms(self.alarms, usage)
+                print(format_usage_report(iterations_done, usage, triggered_alarms))
+            print(f"Monitorsessionen är klar efter {iterations_done} varv.")
+        except KeyboardInterrupt:
+            # Ctrl+C avbryter bara sessionen, inte hela programmet
+            print(f"\nMonitorsessionen avbröts efter {iterations_done} varv.")
+        return iterations_done

@@ -1,7 +1,11 @@
 """Tester för monitor.py. Kör med: python test_monitor.py"""
 
+from datetime import datetime
+
 from alarm import Alarm
-from monitor import Monitor, create_alarms, find_triggered_alarms, is_alarm_triggered
+from monitor import (Monitor, create_alarms, find_triggered_alarms, format_usage_report,
+                     is_alarm_triggered, seconds_since)
+from session_length import ITERATIONS, SessionLength
 
 # create_alarms gör om larmdata till Alarm-objekt
 alarm_data_list = [
@@ -91,5 +95,52 @@ assert find_triggered_alarms(test_alarms, {"cpu": 10.0, "ram": 20.0, "disk": 30.
 
 # find_triggered_alarms returnerar en tom lista när det inte finns några larm
 assert find_triggered_alarms([], usage) == []
+
+# format_usage_report visar användningen och att inga larm har slagit till
+assert format_usage_report(1, {"cpu": 10.0, "ram": 20.0, "disk": 30.0}, []) == (
+    "Varv 1: CPU 10.0% | RAM 20.0% | Disk 30.0%\n  Inga larm har slagit till.")
+
+# format_usage_report visar varje larm som slår till och nuvarande användning
+assert format_usage_report(3, usage, [cpu_alarm_50, disk_alarm_90]) == (
+    "Varv 3: CPU 63.0% | RAM 70.0% | Disk 95.5%"
+    "\n  LARM! CPU-larm: 50.0% överskrids (nu 63.0%)"
+    "\n  LARM! DISK-larm: 90.0% överskrids (nu 95.5%)")
+
+# seconds_since räknar sekunderna sedan en starttid
+assert 0 <= seconds_since(datetime.now()) < 1
+
+
+class FakeSystemUsage:
+    """Låtsas vara SystemUsage i testerna, så att användningen alltid är densamma och inget mäts på riktigt."""
+
+    def __init__(self, interrupt_after_iterations: int):
+        """Sparar efter hur många varv testet ska låtsas att användaren trycker Ctrl+C (None betyder aldrig)."""
+        self.interrupt_after_iterations = interrupt_after_iterations
+        self.iterations_measured = 0
+
+    def get_all_usage(self):
+        """Returnerar samma användning varje gång, eller skickar KeyboardInterrupt som Ctrl+C."""
+        if self.iterations_measured == self.interrupt_after_iterations:
+            raise KeyboardInterrupt
+        self.iterations_measured += 1
+        return {"cpu": 63.0, "ram": 70.0, "disk": 95.5}
+
+
+# run_session kör exakt så många varv som valts
+session_monitor = Monitor("test_data/valid_alarms.json")
+session_monitor.load_alarms()
+fake_system_usage = FakeSystemUsage(None)
+assert session_monitor.run_session(SessionLength(ITERATIONS, 3), fake_system_usage) == 3
+assert fake_system_usage.iterations_measured == 3
+
+# run_session avbryts av Ctrl+C utan att felet når resten av programmet
+interrupted_system_usage = FakeSystemUsage(2)
+try:
+    iterations_done = session_monitor.run_session(SessionLength(ITERATIONS, 10), interrupted_system_usage)
+    interrupt_reached_program = False
+except KeyboardInterrupt:
+    interrupt_reached_program = True
+assert interrupt_reached_program == False
+assert iterations_done == 2
 
 print("Alla tester för monitor gick igenom")
