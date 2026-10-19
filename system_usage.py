@@ -6,7 +6,7 @@ import psutil
 
 
 def get_root_directory():
-    """Returnerar root directory för operativsystemet: C:\\ på Windows och / på Mac och Linux."""
+    """Returnerar root directory för operativsystemet: C:\\ på Windows o / på Mac och Linux."""
     # os.name är "nt" på Windows
     if os.name == "nt":
         return "C:\\"

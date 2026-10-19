@@ -4,7 +4,7 @@ from system_usage import SystemUsage, get_root_directory
 
 system_usage = SystemUsage()
 
-# root directory är C:\ på Windows och / på Mac och Linux
+# root directory är C:\ på Windows och / på Mac o Linux
 assert get_root_directory() in ("C:\\", "/")
 assert system_usage.root_directory == get_root_directory()
 
