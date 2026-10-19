@@ -1,6 +1,7 @@
 """Tester för monitor.py. Kör med: python test_monitor.py"""
 
-from monitor import Monitor, create_alarms
+from alarm import Alarm
+from monitor import Monitor, create_alarms, find_triggered_alarms, is_alarm_triggered
 
 # create_alarms gör om larmdata till Alarm-objekt
 alarm_data_list = [
@@ -60,5 +61,35 @@ monitor.alarm_file_path = "test_data/invalid_level_alarms.json"
 message = monitor.load_alarms()
 assert message == "Fel: Larmfilen test_data/invalid_level_alarms.json kunde inte läsas, larmen laddades inte."
 assert len(monitor.alarms) == 3
+
+# larm och användning som används i testerna för larm som slår till
+cpu_alarm_50 = Alarm("cpu", 50)
+cpu_alarm_80 = Alarm("cpu", 80)
+ram_alarm_70 = Alarm("ram", 70)
+disk_alarm_90 = Alarm("disk", 90)
+test_alarms = [cpu_alarm_50, cpu_alarm_80, ram_alarm_70, disk_alarm_90]
+usage = {"cpu": 63.0, "ram": 70.0, "disk": 95.5}
+
+# is_alarm_triggered är True när användningen överskrider larmets nivå
+assert is_alarm_triggered(cpu_alarm_50, usage) == True
+assert is_alarm_triggered(disk_alarm_90, usage) == True
+
+# is_alarm_triggered är False när användningen är lägre än larmets nivå
+assert is_alarm_triggered(cpu_alarm_80, usage) == False
+
+# is_alarm_triggered är False när användningen är lika med larmets nivå, eftersom den inte överskrids
+assert is_alarm_triggered(ram_alarm_70, usage) == False
+
+# find_triggered_alarms returnerar alla larm som slår till, i samma ordning som larmen
+assert find_triggered_alarms(test_alarms, usage) == [cpu_alarm_50, disk_alarm_90]
+
+# find_triggered_alarms är en pure function: listan med larm ändras inte
+assert test_alarms == [cpu_alarm_50, cpu_alarm_80, ram_alarm_70, disk_alarm_90]
+
+# find_triggered_alarms returnerar en tom lista när inga larm slår till
+assert find_triggered_alarms(test_alarms, {"cpu": 10.0, "ram": 20.0, "disk": 30.0}) == []
+
+# find_triggered_alarms returnerar en tom lista när det inte finns några larm
+assert find_triggered_alarms([], usage) == []
 
 print("Alla tester för monitor gick igenom")

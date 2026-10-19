@@ -1,4 +1,4 @@
-"""Monitoreringssystemets logik: laddar larmen som larm-konfigurationssystemet har skickat."""
+"""Monitoreringssystemets logik: laddar larmen och kontrollerar vilka larm som slår till."""
 
 import json
 
@@ -21,6 +21,23 @@ def create_alarms(alarm_data_list: list):
     Listan som skickas in ändras inte, i stället returneras en ny lista.
     """
     return [Alarm(alarm_data["category"], alarm_data["level"]) for alarm_data in alarm_data_list]
+
+
+def is_alarm_triggered(alarm: Alarm, usage: dict):
+    """Returnerar True om användningen i larmets kategori överskrider larmets nivå. (Pure function)
+
+    usage är användningen i procent per kategori, till exempel {"cpu": 63.0, "ram": 44.7, "disk": 2.4}.
+    """
+    return usage[alarm.category] > alarm.level
+
+
+def find_triggered_alarms(alarms: list, usage: dict):
+    """Returnerar en ny lista med alla larm vars nivå överskrids av nuvarande användning. (Pure function)"""
+    triggered_alarms = []
+    for alarm in alarms:
+        if is_alarm_triggered(alarm, usage):
+            triggered_alarms.append(alarm)
+    return triggered_alarms
 
 
 class Monitor:
