@@ -1,7 +1,14 @@
 """Monitoreringssystemet: programmet som användaren startar för att övervaka cpu, ram och disk.
 
 Starta med: python monitoring.py
+
+Användarval kan beskrivas innan programmet startar genom att skriva dem efter filnamnet.
+De körs i tur och ordning när programmet startar, sedan fortsätter programmet som vanligt.
+Exempel: python monitoring.py 2 1 5 3
+  2 = Starta monitorsession, 1 = mät i varv, 5 = fem varv, 3 = Avsluta
 """
+
+import sys
 
 from monitor import SHARED_ALARM_FILE, Monitor
 from session_length import ITERATIONS, SessionLength, parse_length, parse_length_type
@@ -31,12 +38,32 @@ def format_length_question(length_type: str):
     return f"Ange antal {unit} (ett heltal från 1, eller 'oändligt'): "
 
 
+def parse_startup_choices(arguments: list):
+    """Returnerar användarvalen som skrevs efter filnamnet när programmet startades. (Pure function)
+
+    arguments är sys.argv, där första värdet är filnamnet och resten är användarvalen.
+    """
+    return arguments[1:]
+
+
+def format_startup_choices(startup_choices: list):
+    """Returnerar användarvalen från start som en text, till exempel "2 1 5 3". (Pure function)"""
+    text = ""
+    for choice in startup_choices:
+        text += choice + " "
+    return text.strip()
+
+
 class MonitoringProgram:
     """Monitoreringssystemets meny som låter användaren ladda larm och starta monitorsessioner."""
 
-    def __init__(self, alarm_file_path: str):
-        """Skapar monitorn och avläsningen av datorn. Programmet körs tills användaren väljer Avsluta."""
+    def __init__(self, alarm_file_path: str, startup_choices: list):
+        """Skapar monitorn och avläsningen av datorn. Programmet körs tills användaren väljer Avsluta.
+
+        startup_choices är användarvalen som ska köras automatiskt när programmet startar.
+        """
         self.monitor = Monitor(alarm_file_path)
+        self.startup_choices = startup_choices
         self.system_usage = SystemUsage()
         self.is_running = True
         # first-class functions: varje menyval är kopplat till metoden som ska köras
@@ -47,7 +74,15 @@ class MonitoringProgram:
         }
 
     def get_user_input(self, prompt: str):
-        """Frågar användaren och returnerar svaret utan mellanslag i början och slutet."""
+        """Returnerar nästa användarval från start, eller frågar användaren när de är slut.
+
+        Svaret returneras utan mellanslag i början och slutet.
+        """
+        if len(self.startup_choices) > 0:
+            choice = self.startup_choices.pop(0).strip()
+            # visar valet som om användaren hade skrivit det, så att det syns vad som händer
+            print(f"{prompt}{choice}   (valt vid start)")
+            return choice
         return input(prompt).strip()
 
     def load_alarms(self):
@@ -91,6 +126,8 @@ class MonitoringProgram:
 
     def run(self):
         """Laddar larmen automatiskt och visar sedan menyn tills användaren avslutar."""
+        if len(self.startup_choices) > 0:
+            print(f"Användarval från start som körs automatiskt: {format_startup_choices(self.startup_choices)}")
         self.load_alarms()
         try:
             while self.is_running:
@@ -102,4 +139,4 @@ class MonitoringProgram:
 
 
 if __name__ == "__main__":
-    MonitoringProgram(SHARED_ALARM_FILE).run()
+    MonitoringProgram(SHARED_ALARM_FILE, parse_startup_choices(sys.argv)).run()
