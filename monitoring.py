@@ -6,11 +6,15 @@ Användarval kan beskrivas innan programmet startar genom att skriva dem efter f
 De körs i tur och ordning när programmet startar, sedan fortsätter programmet som vanligt.
 Exempel: python monitoring.py 2 1 5 3
   2 = Starta monitorsession, 1 = mät i varv, 5 = fem varv, 3 = Avsluta
+
+Allt som händer loggas av loggsystemet i en ny loggfil i mappen logs/.
 """
 
 import sys
 
-from monitor import SHARED_ALARM_FILE, Monitor
+from logger import Logger
+from monitor import (LOG_ERROR, LOG_FUNCTION, LOG_USER_CHOICE, SHARED_ALARM_FILE, Monitor,
+                     format_for_log, present)
 from session_length import ITERATIONS, SessionLength, parse_length, parse_length_type
 from system_usage import SystemUsage
 
@@ -57,12 +61,14 @@ def format_startup_choices(startup_choices: list):
 class MonitoringProgram:
     """Monitoreringssystemets meny som låter användaren ladda larm och starta monitorsessioner."""
 
-    def __init__(self, alarm_file_path: str, startup_choices: list):
+    def __init__(self, alarm_file_path: str, startup_choices: list, logger):
         """Skapar monitorn och avläsningen av datorn. Programmet körs tills användaren väljer Avsluta.
 
-        startup_choices är användarvalen som ska köras automatiskt när programmet startar.
+        startup_choices är användarvalen som ska köras automatiskt när programmet startar,
+        och logger är ett Logger-objekt från loggsystemet som loggar allt som händer.
         """
-        self.monitor = Monitor(alarm_file_path)
+        self.logger = logger
+        self.monitor = Monitor(alarm_file_path, logger)
         self.startup_choices = startup_choices
         self.system_usage = SystemUsage()
         self.is_running = True
@@ -76,18 +82,21 @@ class MonitoringProgram:
     def get_user_input(self, prompt: str):
         """Returnerar nästa användarval från start, eller frågar användaren när de är slut.
 
-        Svaret returneras utan mellanslag i början och slutet.
+        Svaret returneras utan mellanslag i början och slutet, och loggas tillsammans med frågan.
         """
         if len(self.startup_choices) > 0:
             choice = self.startup_choices.pop(0).strip()
             # visar valet som om användaren hade skrivit det, så att det syns vad som händer
             print(f"{prompt}{choice}   (valt vid start)")
+            self.logger.write_log(LOG_USER_CHOICE, f"{format_for_log(prompt)} {choice}   (valt vid start)")
             return choice
-        return input(prompt).strip()
+        choice = input(prompt).strip()
+        self.logger.write_log(LOG_USER_CHOICE, f"{format_for_log(prompt)} {choice}")
+        return choice
 
     def load_alarms(self):
         """Laddar larmen från den delade larmfilen och visar hur det gick."""
-        print(self.monitor.load_alarms())
+        present(self.monitor.load_alarms(), self.logger)
 
     def ask_length_type(self):
         """Frågar om sessionens längd ska mätas i varv eller sekunder, tills svaret är giltigt."""
@@ -96,15 +105,18 @@ class MonitoringProgram:
             length_type = parse_length_type(choice)
             if length_type is not None:
                 return length_type
-            print("Ogiltigt val, välj 1 eller 2.")
+            self.logger.write_log(LOG_ERROR, f"Ogiltig typ av längd: '{choice}'.")
+            present("Ogiltigt val, välj 1 eller 2.", self.logger)
 
     def ask_length(self, length_type: str):
         """Frågar efter sessionens längd tills svaret är ett heltal från 1 eller 'oändligt'."""
         while True:
-            length = parse_length(self.get_user_input(format_length_question(length_type)))
+            answer = self.get_user_input(format_length_question(length_type))
+            length = parse_length(answer)
             if length is not None:
                 return length
-            print("Ogiltig längd, ange ett heltal från 1 eller 'oändligt'.")
+            self.logger.write_log(LOG_ERROR, f"Ogiltig längd: '{answer}'.")
+            present("Ogiltig längd, ange ett heltal från 1 eller 'oändligt'.", self.logger)
 
     def start_session(self):
         """Frågar efter sessionens längd och kör sedan monitorsessionen."""
@@ -114,7 +126,8 @@ class MonitoringProgram:
 
     def exit_program(self):
         """Avslutar programmet efter nuvarande menyval."""
-        print("Monitoreringssystemet avslutas.")
+        self.logger.write_log(LOG_FUNCTION, "Avslutar monitoreringssystemet.")
+        present("Monitoreringssystemet avslutas.", self.logger)
         self.is_running = False
 
     def handle_choice(self, choice: str):
@@ -122,21 +135,24 @@ class MonitoringProgram:
         if choice in self.menu_actions:
             self.menu_actions[choice]()
         else:
-            print(f"Ogiltigt val, välj {LOAD_ALARMS}, {START_SESSION} eller {EXIT_PROGRAM}.")
+            self.logger.write_log(LOG_ERROR, f"Ogiltigt menyval: '{choice}'.")
+            present(f"Ogiltigt val, välj {LOAD_ALARMS}, {START_SESSION} eller {EXIT_PROGRAM}.", self.logger)
 
     def run(self):
         """Laddar larmen automatiskt och visar sedan menyn tills användaren avslutar."""
         if len(self.startup_choices) > 0:
-            print(f"Användarval från start som körs automatiskt: {format_startup_choices(self.startup_choices)}")
+            present(f"Användarval från start som körs automatiskt: {format_startup_choices(self.startup_choices)}",
+                    self.logger)
         self.load_alarms()
         try:
             while self.is_running:
-                print(format_menu(len(self.monitor.alarms)))
+                present(format_menu(len(self.monitor.alarms)), self.logger)
                 self.handle_choice(self.get_user_input("Välj ett alternativ: "))
         except KeyboardInterrupt:
             # Ctrl+C i menyn avslutar programmet utan felmeddelande från Python
-            print("\nMonitoreringssystemet avslutas.")
+            self.logger.write_log(LOG_USER_CHOICE, "Användaren tryckte Ctrl+C i menyn.")
+            present("\nMonitoreringssystemet avslutas.", self.logger)
 
 
 if __name__ == "__main__":
-    MonitoringProgram(SHARED_ALARM_FILE, parse_startup_choices(sys.argv)).run()
+    MonitoringProgram(SHARED_ALARM_FILE, parse_startup_choices(sys.argv), Logger("monitoreringssystem")).run()

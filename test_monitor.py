@@ -3,9 +3,22 @@
 from datetime import datetime
 
 from alarm import Alarm
-from monitor import (Monitor, create_alarms, find_triggered_alarms, format_usage_report,
-                     is_alarm_triggered, seconds_since)
+from fakes import FakeLogger, FakeSystemUsage
+from monitor import (LOG_ERROR, LOG_FUNCTION, LOG_INFORMATION, LOG_LOADED_DATA, LOG_USER_CHOICE, Monitor,
+                     create_alarms, find_triggered_alarms, format_alarm_list, format_for_log,
+                     format_usage_report, is_alarm_triggered, present, seconds_since)
 from session_length import ITERATIONS, SessionLength
+
+# format_for_log gör om en text med flera rader till en enda rad
+assert format_for_log("Varv 1: CPU 10%\n  Inga larm har slagit till.") == (
+    "Varv 1: CPU 10% |   Inga larm har slagit till.")
+assert format_for_log("\n--- Meny ---\n1. Ladda alarm") == "--- Meny --- | 1. Ladda alarm"
+assert format_for_log("En rad") == "En rad"
+
+# present loggar meddelandet som information, på en rad
+logger = FakeLogger()
+present("Rad ett\nRad två", logger)
+assert logger.entries == [(LOG_INFORMATION, "Rad ett | Rad två")]
 
 # create_alarms gör om larmdata till Alarm-objekt
 alarm_data_list = [
@@ -36,35 +49,48 @@ except ValueError:
     raised_value_error = True
 assert raised_value_error
 
+# format_alarm_list visar alla larm som en text
+assert format_alarm_list(alarms) == "CPU-larm: 80.0%, DISK-larm: 90.0%"
+assert format_alarm_list([]) == "inga larm"
+
 # Monitor har inga larm innan larmen laddas
-monitor = Monitor("test_data/valid_alarms.json")
+logger = FakeLogger()
+monitor = Monitor("test_data/valid_alarms.json", logger)
 assert monitor.alarms == []
 
-# load_alarms laddar alla larm från en giltig larmfil
+# load_alarms laddar alla larm från en giltig larmfil och loggar vilka larm som laddades
 message = monitor.load_alarms()
 assert message == "3 larm har laddats från test_data/valid_alarms.json."
 assert len(monitor.alarms) == 3
 assert monitor.alarms[1].category == "ram"
 assert monitor.alarms[1].level == 70.5
+assert logger.entries == [
+    (LOG_FUNCTION, "Laddar larm från test_data/valid_alarms.json."),
+    (LOG_LOADED_DATA, "test_data/valid_alarms.json: CPU-larm: 80.0%, RAM-larm: 70.5%, DISK-larm: 90.0%"),
+]
 
-# load_alarms ger ett meddelande och inga larm när larmfilen inte finns
-missing_file_monitor = Monitor("test_data/finns_inte.json")
+# load_alarms ger ett meddelande, inga larm och ett fel i loggen när larmfilen inte finns
+missing_file_logger = FakeLogger()
+missing_file_monitor = Monitor("test_data/finns_inte.json", missing_file_logger)
 message = missing_file_monitor.load_alarms()
 assert message == ("Hittade ingen larmfil (test_data/finns_inte.json). "
                    "Skicka larm från larm-konfigurationssystemet först.")
 assert missing_file_monitor.alarms == []
+assert missing_file_logger.entries[-1] == (LOG_ERROR, "Larmfilen test_data/finns_inte.json finns inte.")
 
-# load_alarms behåller de laddade larmen när larmfilen är trasig
+# load_alarms behåller de laddade larmen och loggar ett fel när larmfilen är trasig
 monitor.alarm_file_path = "test_data/broken_alarms.json"
 message = monitor.load_alarms()
 assert message == "Fel: Larmfilen test_data/broken_alarms.json kunde inte läsas, larmen laddades inte."
 assert len(monitor.alarms) == 3
+assert logger.entries[-1][0] == LOG_ERROR
 
 # load_alarms behåller de laddade larmen när ett larm har en ogiltig nivå
 monitor.alarm_file_path = "test_data/invalid_level_alarms.json"
 message = monitor.load_alarms()
 assert message == "Fel: Larmfilen test_data/invalid_level_alarms.json kunde inte läsas, larmen laddades inte."
 assert len(monitor.alarms) == 3
+assert logger.entries[-1][0] == LOG_ERROR
 
 # larm och användning som används i testerna för larm som slår till
 cpu_alarm_50 = Alarm("cpu", 50)
@@ -109,31 +135,19 @@ assert format_usage_report(3, usage, [cpu_alarm_50, disk_alarm_90]) == (
 # seconds_since räknar sekunderna sedan en starttid
 assert 0 <= seconds_since(datetime.now()) < 1
 
-
-class FakeSystemUsage:
-    """Låtsas vara SystemUsage i testerna, så att användningen alltid är densamma och inget mäts på riktigt."""
-
-    def __init__(self, interrupt_after_iterations: int):
-        """Sparar efter hur många varv testet ska låtsas att användaren trycker Ctrl+C (None betyder aldrig)."""
-        self.interrupt_after_iterations = interrupt_after_iterations
-        self.iterations_measured = 0
-
-    def get_all_usage(self):
-        """Returnerar samma användning varje gång, eller skickar KeyboardInterrupt som Ctrl+C."""
-        if self.iterations_measured == self.interrupt_after_iterations:
-            raise KeyboardInterrupt
-        self.iterations_measured += 1
-        return {"cpu": 63.0, "ram": 70.0, "disk": 95.5}
-
-
-# run_session kör exakt så många varv som valts
-session_monitor = Monitor("test_data/valid_alarms.json")
+# run_session kör exakt så många varv som valts och loggar att sessionen startade och vad som visades
+session_logger = FakeLogger()
+session_monitor = Monitor("test_data/valid_alarms.json", session_logger)
 session_monitor.load_alarms()
 fake_system_usage = FakeSystemUsage(None)
 assert session_monitor.run_session(SessionLength(ITERATIONS, 3), fake_system_usage) == 3
 assert fake_system_usage.iterations_measured == 3
+assert (LOG_FUNCTION, "Startar monitorsession som pågår i 3 varv.") in session_logger.entries
+assert (LOG_INFORMATION, "Varv 3: CPU 63.0% | RAM 70.0% | Disk 95.5% |   "
+                         "LARM! DISK-larm: 90.0% överskrids (nu 95.5%)") in session_logger.entries
+assert session_logger.entries[-1] == (LOG_INFORMATION, "Monitorsessionen är klar efter 3 varv.")
 
-# run_session avbryts av Ctrl+C utan att felet når resten av programmet
+# run_session avbryts av Ctrl+C utan att felet når resten av programmet, och avbrottet loggas
 interrupted_system_usage = FakeSystemUsage(2)
 try:
     iterations_done = session_monitor.run_session(SessionLength(ITERATIONS, 10), interrupted_system_usage)
@@ -142,5 +156,7 @@ except KeyboardInterrupt:
     interrupt_reached_program = True
 assert interrupt_reached_program == False
 assert iterations_done == 2
+assert (LOG_USER_CHOICE, "Användaren tryckte Ctrl+C under monitorsessionen.") in session_logger.entries
+assert session_logger.entries[-1] == (LOG_INFORMATION, "Monitorsessionen avbröts efter 2 varv.")
 
 print("Alla tester för monitor gick igenom")

@@ -8,6 +8,24 @@ from alarm import Alarm
 # filen som larm-konfigurationssystemet skapar när användaren väljer "Skicka larm"
 SHARED_ALARM_FILE = "monitoring_data.json"
 
+# kategorierna som används i loggfilen, så att det syns vad varje rad handlar om
+LOG_USER_CHOICE = "ANVÄNDARVAL"
+LOG_INFORMATION = "INFORMATION"
+LOG_LOADED_DATA = "LADDAD DATA"
+LOG_FUNCTION = "FUNKTION"
+LOG_ERROR = "FEL"
+
+
+def format_for_log(text: str):
+    """Returnerar texten på en enda rad, så att varje logginlägg blir en rad i loggfilen. (Pure function)"""
+    return text.replace("\n", " | ").strip(" |")
+
+
+def present(message: str, logger):
+    """Visar ett meddelande för användaren och loggar samma meddelande som information."""
+    print(message)
+    logger.write_log(LOG_INFORMATION, format_for_log(message))
+
 
 def read_alarm_file(file_path: str):
     """Läser en larmfil och returnerar innehållet som en lista med larmdata."""
@@ -22,6 +40,17 @@ def create_alarms(alarm_data_list: list):
     Listan som skickas in ändras inte, i stället returneras en ny lista.
     """
     return [Alarm(alarm_data["category"], alarm_data["level"]) for alarm_data in alarm_data_list]
+
+
+def format_alarm_list(alarms: list):
+    """Returnerar alla larm som en text, till exempel "CPU-larm: 80.0%, RAM-larm: 70.5%". (Pure function)"""
+    if len(alarms) == 0:
+        return "inga larm"
+    text = ""
+    for alarm in alarms:
+        text += f"{alarm}, "
+    # tar bort det sista kommatecknet och mellanslaget
+    return text[:-2]
 
 
 def is_alarm_triggered(alarm: Alarm, usage: dict):
@@ -57,27 +86,35 @@ def seconds_since(start_time: datetime):
 
 
 class Monitor:
-    """Håller reda på monitoreringssystemets larm."""
+    """Håller reda på monitoreringssystemets larm och kör monitorsessioner."""
 
-    def __init__(self, alarm_file_path: str):
-        """Sparar vilken larmfil larmen ska laddas från. Inga larm är laddade från början."""
+    def __init__(self, alarm_file_path: str, logger):
+        """Sparar vilken larmfil larmen ska laddas från och vilken logger som ska användas.
+
+        logger är ett Logger-objekt från loggsystemet. Inga larm är laddade från början.
+        """
         self.alarm_file_path = alarm_file_path
+        self.logger = logger
         self.alarms = []
 
     def load_alarms(self):
-        """Laddar larmen från larmfilen och returnerar ett meddelande om hur det gick."""
+        """Laddar larmen från larmfilen, loggar vad som laddades och returnerar ett meddelande om hur det gick."""
+        self.logger.write_log(LOG_FUNCTION, f"Laddar larm från {self.alarm_file_path}.")
         try:
             alarm_data_list = read_alarm_file(self.alarm_file_path)
             self.alarms = create_alarms(alarm_data_list)
+            self.logger.write_log(LOG_LOADED_DATA, f"{self.alarm_file_path}: {format_alarm_list(self.alarms)}")
             return f"{len(self.alarms)} larm har laddats från {self.alarm_file_path}."
 
         except FileNotFoundError:
             self.alarms = []
+            self.logger.write_log(LOG_ERROR, f"Larmfilen {self.alarm_file_path} finns inte.")
             return (f"Hittade ingen larmfil ({self.alarm_file_path}). "
                     "Skicka larm från larm-konfigurationssystemet först.")
 
-        except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError) as error:
             # larmen som redan var laddade behålls när filen inte går att läsa
+            self.logger.write_log(LOG_ERROR, f"Larmfilen {self.alarm_file_path} kunde inte läsas: {error}")
             return f"Fel: Larmfilen {self.alarm_file_path} kunde inte läsas, larmen laddades inte."
 
     def run_session(self, session_length, system_usage):
@@ -86,7 +123,9 @@ class Monitor:
         session_length är ett SessionLength-objekt och system_usage ett SystemUsage-objekt.
         Returnerar hur många varv sessionen hann köra.
         """
-        print(f"Monitorsessionen startar och pågår i {session_length}. Tryck Ctrl+C för att avbryta.")
+        self.logger.write_log(LOG_FUNCTION, f"Startar monitorsession som pågår i {session_length}.")
+        present(f"Monitorsessionen startar och pågår i {session_length}. Tryck Ctrl+C för att avbryta.",
+                self.logger)
         start_time = datetime.now()
         iterations_done = 0
         try:
@@ -94,9 +133,10 @@ class Monitor:
                 usage = system_usage.get_all_usage()
                 iterations_done += 1
                 triggered_alarms = find_triggered_alarms(self.alarms, usage)
-                print(format_usage_report(iterations_done, usage, triggered_alarms))
-            print(f"Monitorsessionen är klar efter {iterations_done} varv.")
+                present(format_usage_report(iterations_done, usage, triggered_alarms), self.logger)
+            present(f"Monitorsessionen är klar efter {iterations_done} varv.", self.logger)
         except KeyboardInterrupt:
             # Ctrl+C avbryter bara sessionen, inte hela programmet
-            print(f"\nMonitorsessionen avbröts efter {iterations_done} varv.")
+            self.logger.write_log(LOG_USER_CHOICE, "Användaren tryckte Ctrl+C under monitorsessionen.")
+            present(f"\nMonitorsessionen avbröts efter {iterations_done} varv.", self.logger)
         return iterations_done
