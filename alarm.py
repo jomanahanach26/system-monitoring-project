@@ -1,3 +1,5 @@
+"""Hanterar larmkonfiguration och sparar larm i JSON-filer."""
+
 import json
 
 
@@ -47,20 +49,21 @@ class AlarmManager:
             print(f"{index}. {alarm}")
 
     def remove_alarm(self, index):
-        """Tar bort ett larm med hjälp av dess nummer."""
+        """Tar bort ett larm och returnerar om det lyckades."""
         if index < 1 or index > len(self.alarms):
             print("Ogiltigt larmnummer.")
-            return
+            return False
 
         removed_alarm = self.alarms.pop(index - 1)
         print(f"Larmet {removed_alarm} har tagits bort.")
+        return True
 
     def sort_alarms(self):
         """Sorterar larmen efter kategori och nivå."""
         self.alarms.sort(key=lambda alarm: (alarm.category, alarm.level))
 
     def save_alarms(self):
-        """Sparar alla larm i en JSON-fil."""
+        """Sparar alla larm och returnerar om det lyckades."""
         alarm_list = []
 
         for alarm in self.alarms:
@@ -75,12 +78,14 @@ class AlarmManager:
                 json.dump(alarm_list, file, indent=4)
 
             print("Larmen har sparats.")
+            return True
 
         except OSError:
             print("Fel: Larmen kunde inte sparas.")
+            return False
 
     def load_alarms(self):
-        """Laddar sparade larm från en JSON-fil."""
+        """Laddar sparade larm och returnerar om det lyckades."""
         try:
             with open("alarms.json", "r", encoding="utf-8") as file:
                 alarm_list = json.load(file)
@@ -96,15 +101,22 @@ class AlarmManager:
 
             self.alarms = loaded_alarms
             print("Larmen har laddats.")
+            return True
 
         except FileNotFoundError:
             print("Ingen sparad larmlista hittades.")
+            return False
 
         except (json.JSONDecodeError, KeyError, TypeError, ValueError):
             print("Fel: Den sparade larmlistan kunde inte läsas.")
+            return False
+
+        except OSError:
+            print("Fel: Den sparade larmlistan kunde inte läsas.")
+            return False
 
     def send_alarms_to_monitoring(self):
-        """Skickar konfigurerade larm till övervakningssystemet."""
+        """Skickar larmen till övervakningssystemet."""
         alarm_list = []
 
         for alarm in self.alarms:
@@ -121,6 +133,8 @@ class AlarmManager:
                 json.dump(alarm_list, file, indent=4)
 
             print("Larmen har skickats till övervakningssystemet.")
+            return True
 
         except OSError:
             print("Fel: Larmen kunde inte skickas.")
+            return False
