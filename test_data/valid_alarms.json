@@ -1,0 +1,5 @@
+[
+    {"category": "cpu", "level": 80.0},
+    {"category": "ram", "level": 70.5},
+    {"category": "disk", "level": 90}
+]
