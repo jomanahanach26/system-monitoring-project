@@ -1,6 +1,12 @@
+
 """Hanterar larmkonfiguration och sparar larm i JSON-filer."""
 
 import json
+
+
+def get_alarm_sort_key(alarm):
+    """Returnerar kategori och nivå för sortering."""
+    return (alarm.category, alarm.level)
 
 
 class Alarm:
@@ -60,7 +66,7 @@ class AlarmManager:
 
     def sort_alarms(self):
         """Sorterar larmen efter kategori och nivå."""
-        self.alarms.sort(key=lambda alarm: (alarm.category, alarm.level))
+        self.alarms.sort(key=get_alarm_sort_key)
 
     def save_alarms(self):
         """Sparar alla larm och returnerar om det lyckades."""
