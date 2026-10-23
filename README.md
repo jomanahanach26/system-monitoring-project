@@ -6,6 +6,11 @@
   - **Filer:** logger.py och test_logger.py
   - **Klasser:** Logger
   - **Funktioner:** write_log() och format_log_entry()
+**Jomana:** Ansvarig för **Krav: Larmkonfigurationssystem**.
+  - **Filer:** `alarm.py`, `main.py` och `test_alarm.py`
+  - **Klasser:** `Alarm` och `AlarmManager`
+  - **Funktioner/metoder:** `add_alarm()`, `remove_alarm()`, `show_alarms()`, `sort_alarms()`, `save_alarms()`, `load_alarms()` och `send_alarms_to_monitoring()`
+  - **Övrigt:** Menyhantering, felhantering, loggning och förinställda användarval från kommandoraden.
 
 **Lewis:** Ansvarig för **Krav: Monitoreringssystem**.
   - **Filer:** monitoring.py, monitor.py, session_length.py, system_usage.py, fakes.py,
