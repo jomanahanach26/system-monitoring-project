@@ -1,0 +1,22 @@
+[
+    {
+        "category": "cpu",
+        "level": 80.0
+    },
+    {
+        "category": "cpu",
+        "level": 80.0
+    },
+    {
+        "category": "cpu",
+        "level": 85.0
+    },
+    {
+        "category": "disk",
+        "level": 60.0
+    },
+    {
+        "category": "ram",
+        "level": 70.0
+    }
+]
